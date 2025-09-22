@@ -1,14 +1,22 @@
 {
-  "name": "administrator",
+  "name": "gemini-on-vercel",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jsever-ms/gemini-on-vercel.git"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jsever-ms/gemini-on-vercel/issues"
+  },
+  "homepage": "https://github.com/jsever-ms/gemini-on-vercel#readme",
   "dependencies": {
     "axios": "^1.12.2"
   }
