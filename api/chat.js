@@ -1,49 +1,63 @@
-// 文件路径: /api/chat.js
+// 文件路径: /api/chat.js (改造为调用Kimi API)
 const axios = require('axios');
 
-// 从Vercel的环境变量中读取API Key
-const API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = `https://generativelan.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`;
+// 从Vercel的环境变量中读取 Kimi API Key
+const API_KEY = process.env.KIMI_API_KEY; 
+const KIMI_API_URL = 'https://api.moonshot.cn/v1/chat/completions';
 
-// Vercel函数的入口
-// req = request (请求), res = response (响应)
 module.exports = async (req, res) => {
-  // 1. 检查请求方法是否为 POST
+  // CORS 许可头
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
-
+  
   try {
-    // 2. 从请求体中获取聊天记录
     const { messages } = req.body;
     if (!messages) {
       return res.status(400).json({ error: 'Missing "messages" in request body' });
     }
 
-    // 3. 调用 Gemini API
-    const response = await axios.post(GEMINI_API_URL, {
-      contents: messages
+    // --- 【核心改动】适配 Kimi API 格式 ---
+
+    // 1. Kimi 的 messages 格式为 { role: "...", content: "..." }
+    //    我们需要将小程序传来的 { role: "...", parts: [{ text: "..." }] } 格式转换一下
+    const kimiMessages = messages.map(msg => ({
+      role: msg.role === 'model' ? 'assistant' : 'user', // Gemini用'model', Kimi用'assistant'
+      content: msg.parts[0].text
+    }));
+
+    // 2. 调用 Kimi API
+    const response = await axios.post(KIMI_API_URL, {
+      model: "moonshot-v1-8k", // Kimi 需要指定模型
+      messages: kimiMessages,
     }, {
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}` // Kimi 使用 Bearer Token 认证
+      }
     });
 
-    // 4. 处理并返回Gemini的响应
-    if (response.data.candidates && response.data.candidates.length > 0) {
+    // 3. 解析 Kimi 的返回结果
+    if (response.data.choices && response.data.choices.length > 0) {
+      // 4. 将 Kimi 返回的格式，再转换回我们小程序需要的格式
       const aiMessage = {
-        role: 'model',
-        parts: response.data.candidates[0].content.parts
+        role: 'model', // 返回给小程序的 role 还是用 'model'
+        parts: [{ text: response.data.choices[0].message.content }]
       };
-      // 成功时，返回200状态码和AI消息
       res.status(200).json({ success: true, aiMessage: aiMessage });
     } else {
-      const blockReason = response.data.promptFeedback?.blockReason || '未知原因';
-      res.status(500).json({ success: false, error: `AI因内容安全策略拒绝回答: ${blockReason}` });
+      res.status(500).json({ success: false, error: 'Kimi未能生成有效回复' });
     }
 
   } catch (error) {
-    console.error('Error calling Gemini API:', error.response ? error.response.data : error.message);
+    console.error('Error calling Kimi API:', error.response ? error.response.data : error.message);
     const detail = error.response ? error.response.data?.error?.message : error.message;
-    // 出错时，返回500状态码和错误详情
     res.status(500).json({ success: false, error: `请求AI失败: ${detail}` });
   }
 };
